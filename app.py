@@ -6,9 +6,10 @@ from plotly.subplots import make_subplots
 from scipy.fft import rfft, irfft, dct, idct
 import pandas as pd
 
-def load_rhos_data(filename='func.txt'):
-    """Загружает данные из файла func.txt"""
+def load_cut_data(cut_name):
+    """Загружает данные огранки из файла в папке rhos"""
     try:
+        filename = f"rhos/{cut_name}.txt"
         with open(filename, 'r') as f:
             content = f.read().strip()
         
@@ -25,6 +26,16 @@ def load_rhos_data(filename='func.txt'):
     except FileNotFoundError:
         st.error(f"Файл {filename} не найден!")
         return None
+
+def get_available_cuts():
+    """Возвращает список доступных огранок"""
+    import os
+    cuts = []
+    if os.path.exists('rhos'):
+        for file in os.listdir('rhos'):
+            if file.endswith('.txt'):
+                cuts.append(file.replace('.txt', ''))
+    return sorted(cuts)
 
 def fourier_reconstruction(f, num_coeffs):
     """Восстановление сигнала с помощью Фурье преобразования"""
@@ -62,7 +73,7 @@ def plot_reconstruction_comparison(f, f_approx_fft, f_approx_dct, err_fft, err_d
     # Создаем подграфики
     fig = make_subplots(
         rows=2, cols=1,
-        subplot_titles=('Сравнение восстановления сигнала', 'Абсолютные ошибки восстановления'),
+        subplot_titles=('Сравнение восстановления сигнала', 'Ошибки восстановления (со знаками)'),
         vertical_spacing=0.1
     )
     
@@ -86,8 +97,8 @@ def plot_reconstruction_comparison(f, f_approx_fft, f_approx_dct, err_fft, err_d
     )
     
     # График ошибок восстановления
-    error_fft = np.abs(f - f_approx_fft)
-    error_dct = np.abs(f - f_approx_dct)
+    error_fft = f - f_approx_fft
+    error_dct = f - f_approx_dct
     
     fig.add_trace(
         go.Scatter(x=x, y=error_fft, mode='lines', 
@@ -114,7 +125,7 @@ def plot_reconstruction_comparison(f, f_approx_fft, f_approx_dct, err_fft, err_d
     fig.update_xaxes(title_text="Индекс", row=1, col=1)
     fig.update_yaxes(title_text="Значение", row=1, col=1)
     fig.update_xaxes(title_text="Индекс", row=2, col=1)
-    fig.update_yaxes(title_text="Абсолютная ошибка", row=2, col=1)
+    fig.update_yaxes(title_text="Ошибка (со знаком)", row=2, col=1)
     
     return fig
 
@@ -206,18 +217,42 @@ def plot_coefficients_comparison(f_fft, energies, idx_top, f_dct, idx_top_dct, n
 
 # Настройка страницы Streamlit
 st.set_page_config(page_title="Визуализация восстановления сигнала", layout="wide")
-st.title("🎯 Визуализация восстановления сигнала: Фурье vs DCT")
+
+# Динамический заголовок
+if 'selected_cut' in st.session_state:
+    st.title(f"💎 Визуализация восстановления сигнала: {st.session_state.selected_cut} (Фурье vs DCT)")
+else:
+    st.title("🎯 Визуализация восстановления сигнала: Фурье vs DCT")
 
 # Загрузка данных
-f = load_rhos_data()
-if f is None:
-    st.error("Ошибка при загрузке данных")
-    st.stop()
-
 st.info("📋 **Настройки находятся в боковой панели слева!** ")
 
 # Боковая панель с настройками
 st.sidebar.header("⚙️ Настройки параметров")
+
+# Выбор огранки
+available_cuts = get_available_cuts()
+if available_cuts:
+    selected_cut = st.sidebar.selectbox(
+        "Выберите огранку",
+        options=available_cuts,
+        index=available_cuts.index('Pear') if 'Pear' in available_cuts else 0,
+        help="Выберите тип огранки для анализа"
+    )
+    
+    # Сохраняем выбранную огранку в session_state
+    st.session_state.selected_cut = selected_cut
+    
+    # Загрузка данных выбранной огранки
+    f = load_cut_data(selected_cut)
+    if f is None:
+        st.error("Ошибка при загрузке данных огранки")
+        st.stop()
+    
+    # st.success(f"✅ Загружена огранка: **{selected_cut}** ({len(f)} точек)")
+else:
+    st.error("Ошибка при загрузке данных")
+    st.stop()
 
 # Слайдеры для количества коэффициентов
 max_coeffs_fft = min(50, len(f) // 2)  # Максимум для Фурье
@@ -401,7 +436,7 @@ if st.checkbox("Показать детальную информацию о ко
             'Модуль': energies[idx_top],
             'Фаза (рад)': np.angle(f_fft[idx_top])
         })
-        st.dataframe(top_coeffs_df)
+        st.dataframe(top_coeffs_df, use_container_width=True, hide_index=True)
     
     with col2:
         st.subheader("Выбранные коэффициенты DCT")
@@ -410,7 +445,7 @@ if st.checkbox("Показать детальную информацию о ко
             'Значение': f_dct[idx_top_dct],
             'Модуль': np.abs(f_dct[idx_top_dct])
         })
-        st.dataframe(dct_coeffs_df)
+        st.dataframe(dct_coeffs_df, use_container_width=True, hide_index=True)
 
 st.markdown("---")
 st.markdown("*Измените параметры в боковой панели для интерактивного анализа*")
