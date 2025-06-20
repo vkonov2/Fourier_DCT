@@ -43,12 +43,17 @@ def fourier_reconstruction(f, num_coeffs):
 def dct_reconstruction(f, num_coeffs):
     """Восстановление сигнала с помощью DCT преобразования"""
     f_dct = dct(f, type=2, norm='ortho')
+    
+    # Выбираем коэффициенты с наибольшими значениями
+    dct_abs = np.abs(f_dct)
+    idx_top = np.argsort(dct_abs)[-num_coeffs:][::-1]
+    
     f_dct_approx = np.zeros_like(f_dct)
-    f_dct_approx[:num_coeffs] = f_dct[:num_coeffs]
+    f_dct_approx[idx_top] = f_dct[idx_top]
     f_approx = idct(f_dct_approx, type=2, norm='ortho')
     
     err = np.linalg.norm(f - f_approx) / np.linalg.norm(f)
-    return f_approx, err, f_dct
+    return f_approx, err, f_dct, idx_top
 
 def plot_reconstruction_comparison(f, f_approx_fft, f_approx_dct, err_fft, err_dct):
     """Построение графиков сравнения восстановления с помощью Plotly"""
@@ -113,7 +118,7 @@ def plot_reconstruction_comparison(f, f_approx_fft, f_approx_dct, err_fft, err_d
     
     return fig
 
-def plot_spectrum_comparison(f_fft, energies, idx_top, f_dct, num_coeffs_fft, num_coeffs_dct):
+def plot_spectrum_comparison(f_fft, energies, idx_top, f_dct, idx_top_dct, num_coeffs_fft, num_coeffs_dct):
     """Построение графиков спектров с помощью Plotly"""
     freq = np.arange(len(energies))
     dct_coeffs = np.arange(len(f_dct))
@@ -145,7 +150,7 @@ def plot_spectrum_comparison(f_fft, energies, idx_top, f_dct, num_coeffs_fft, nu
         row=2, col=1
     )
     fig.add_trace(
-        go.Scatter(x=dct_coeffs[:num_coeffs_dct], y=np.abs(f_dct[:num_coeffs_dct]), 
+        go.Scatter(x=dct_coeffs[idx_top_dct], y=np.abs(f_dct[idx_top_dct]), 
                   mode='markers', name=f'Выбранные {num_coeffs_dct} коэффициентов',
                   marker=dict(color='red', size=8, symbol='circle')),
         row=2, col=1
@@ -167,7 +172,7 @@ def plot_spectrum_comparison(f_fft, energies, idx_top, f_dct, num_coeffs_fft, nu
     
     return fig
 
-def plot_coefficients_comparison(f_fft, energies, idx_top, f_dct, num_coeffs_fft, num_coeffs_dct):
+def plot_coefficients_comparison(f_fft, energies, idx_top, f_dct, idx_top_dct, num_coeffs_fft, num_coeffs_dct):
     """Дополнительная визуализация сравнения коэффициентов"""
     # Создаем DataFrame для визуализации
     fourier_data = pd.DataFrame({
@@ -177,8 +182,8 @@ def plot_coefficients_comparison(f_fft, energies, idx_top, f_dct, num_coeffs_fft
     })
     
     dct_data = pd.DataFrame({
-        'Индекс': range(num_coeffs_dct),
-        'Модуль': np.abs(f_dct[:num_coeffs_dct]),
+        'Индекс': idx_top_dct,
+        'Модуль': np.abs(f_dct[idx_top_dct]),
         'Метод': 'DCT'
     })
     
@@ -206,9 +211,10 @@ st.title("🎯 Визуализация восстановления сигна�
 # Загрузка данных
 f = load_rhos_data()
 if f is None:
+    st.error("Ошибка при загрузке данных")
     st.stop()
 
-st.success(f"✅ Загружено {len(f)} точек данных")
+st.info("📋 **Настройки находятся в боковой панели слева!** ")
 
 # Боковая панель с настройками
 st.sidebar.header("⚙️ Настройки параметров")
@@ -217,25 +223,104 @@ st.sidebar.header("⚙️ Настройки параметров")
 max_coeffs_fft = min(50, len(f) // 2)  # Максимум для Фурье
 max_coeffs_dct = min(100, len(f))      # Максимум для DCT
 
+# Инициализация session_state
+if 'num_coeffs_fft' not in st.session_state:
+    st.session_state.num_coeffs_fft = 12
+if 'num_coeffs_dct' not in st.session_state:
+    st.session_state.num_coeffs_dct = 24
+if 'dct_fixed_ratio' not in st.session_state:
+    st.session_state.dct_fixed_ratio = False
+
+# Функции для обновления значений
+def update_fft_slider():
+    st.session_state.num_coeffs_fft = st.session_state.fft_slider
+    if st.session_state.dct_fixed_ratio:
+        st.session_state.num_coeffs_dct = st.session_state.num_coeffs_fft * 2
+        # Принудительно обновляем элементы управления DCT
+        st.session_state.dct_slider = st.session_state.num_coeffs_dct
+        st.session_state.dct_input = st.session_state.num_coeffs_dct
+
+def update_fft_input():
+    st.session_state.num_coeffs_fft = st.session_state.fft_input
+    if st.session_state.dct_fixed_ratio:
+        st.session_state.num_coeffs_dct = st.session_state.num_coeffs_fft * 2
+        # Принудительно обновляем элементы управления DCT
+        st.session_state.dct_slider = st.session_state.num_coeffs_dct
+        st.session_state.dct_input = st.session_state.num_coeffs_dct
+
+def update_dct_slider():
+    if not st.session_state.dct_fixed_ratio:
+        st.session_state.num_coeffs_dct = st.session_state.dct_slider
+
+def update_dct_input():
+    if not st.session_state.dct_fixed_ratio:
+        st.session_state.num_coeffs_dct = st.session_state.dct_input
+
+def update_fixed_ratio():
+    if st.session_state.dct_fixed_ratio:
+        st.session_state.num_coeffs_dct = st.session_state.num_coeffs_fft * 2
+        # Принудительно обновляем элементы управления DCT
+        st.session_state.dct_slider = st.session_state.num_coeffs_dct
+        st.session_state.dct_input = st.session_state.num_coeffs_dct
+
+# Галочка для фиксации соотношения
+dct_fixed_ratio = st.sidebar.checkbox(
+    "Фиксировать DCT = 2 × Фурье",
+    value=st.session_state.dct_fixed_ratio,
+    key="dct_fixed_ratio",
+    on_change=update_fixed_ratio,
+    help="Если включено, количество коэффициентов DCT будет автоматически в 2 раза больше коэффициентов Фурье"
+)
+
+# Слайдер для коэффициентов Фурье
 num_coeffs_fft = st.sidebar.slider(
     "Количество коэффициентов Фурье", 
     min_value=1, 
     max_value=max_coeffs_fft, 
-    value=12,
+    value=st.session_state.num_coeffs_fft,
+    key="fft_slider",
+    on_change=update_fft_slider,
     help="Количество самых значимых комплексных коэффициентов Фурье"
 )
 
+# Текстовое поле для ручного ввода коэффициентов Фурье
+num_coeffs_fft_input = st.sidebar.number_input(
+    "Введите количество коэффициентов Фурье",
+    min_value=1,
+    max_value=max_coeffs_fft,
+    value=st.session_state.num_coeffs_fft,
+    key="fft_input",
+    on_change=update_fft_input,
+    help="Введите точное количество коэффициентов Фурье"
+)
+
+# Слайдер для коэффициентов DCT (отключается при фиксированном соотношении)
 num_coeffs_dct = st.sidebar.slider(
     "Количество коэффициентов DCT", 
     min_value=1, 
     max_value=max_coeffs_dct, 
-    value=24,
-    help="Количество первых коэффициентов DCT"
+    value=st.session_state.num_coeffs_dct,
+    key="dct_slider",
+    on_change=update_dct_slider,
+    disabled=dct_fixed_ratio,
+    help="Количество первых коэффициентов DCT" + (" (автоматически)" if dct_fixed_ratio else "")
+)
+
+# Текстовое поле для ручного ввода коэффициентов DCT (отключается при фиксированном соотношении)
+num_coeffs_dct_input = st.sidebar.number_input(
+    "Введите количество коэффициентов DCT",
+    min_value=1,
+    max_value=max_coeffs_dct,
+    value=st.session_state.num_coeffs_dct,
+    key="dct_input",
+    on_change=update_dct_input,
+    disabled=dct_fixed_ratio,
+    help="Введите точное количество коэффициентов DCT" + (" (автоматически)" if dct_fixed_ratio else "")
 )
 
 # Выполнение восстановления
-f_approx_fft, err_fft, f_fft, energies, idx_top = fourier_reconstruction(f, num_coeffs_fft)
-f_approx_dct, err_dct, f_dct = dct_reconstruction(f, num_coeffs_dct)
+f_approx_fft, err_fft, f_fft, energies, idx_top = fourier_reconstruction(f, num_coeffs_fft_input)
+f_approx_dct, err_dct, f_dct, idx_top_dct = dct_reconstruction(f, num_coeffs_dct_input)
 
 # Отображение метрик
 col1, col2, col3 = st.columns(3)
@@ -254,19 +339,19 @@ st.plotly_chart(fig_reconstruction, use_container_width=True)
 
 # Графики спектров
 st.header("📈 Спектральный анализ")
-fig_spectrum = plot_spectrum_comparison(f_fft, energies, idx_top, f_dct, num_coeffs_fft, num_coeffs_dct)
+fig_spectrum = plot_spectrum_comparison(f_fft, energies, idx_top, f_dct, idx_top_dct, num_coeffs_fft_input, num_coeffs_dct_input)
 st.plotly_chart(fig_spectrum, use_container_width=True)
 
 # Дополнительная визуализация коэффициентов
 st.header("📊 Сравнение выбранных коэффициентов")
-fig_coeffs = plot_coefficients_comparison(f_fft, energies, idx_top, f_dct, num_coeffs_fft, num_coeffs_dct)
+fig_coeffs = plot_coefficients_comparison(f_fft, energies, idx_top, f_dct, idx_top_dct, num_coeffs_fft_input, num_coeffs_dct_input)
 st.plotly_chart(fig_coeffs, use_container_width=True)
 
 # Таблица сравнения
 st.header("📋 Детальная статистика")
 stats_data = {
     'Метод': ['Фурье', 'DCT'],
-    'Количество коэффициентов': [num_coeffs_fft, num_coeffs_dct],
+    'Количество коэффициентов': [num_coeffs_fft_input, num_coeffs_dct_input],
     'Относительная ошибка': [err_fft, err_dct],
     'Средняя абсолютная ошибка': [
         np.mean(np.abs(f - f_approx_fft)),
@@ -319,11 +404,11 @@ if st.checkbox("Показать детальную информацию о ко
         st.dataframe(top_coeffs_df)
     
     with col2:
-        st.subheader("Первые коэффициенты DCT")
+        st.subheader("Выбранные коэффициенты DCT")
         dct_coeffs_df = pd.DataFrame({
-            'Индекс': range(num_coeffs_dct),
-            'Значение': f_dct[:num_coeffs_dct],
-            'Модуль': np.abs(f_dct[:num_coeffs_dct])
+            'Индекс': idx_top_dct,
+            'Значение': f_dct[idx_top_dct],
+            'Модуль': np.abs(f_dct[idx_top_dct])
         })
         st.dataframe(dct_coeffs_df)
 
