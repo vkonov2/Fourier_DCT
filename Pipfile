@@ -9,6 +9,8 @@ numpy = "*"
 plotly = "*"
 scipy = "*"
 pandas = "*"
+pywavelets = "*"
+shapely = "*"
 
 [dev-packages]
 
