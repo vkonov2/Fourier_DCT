@@ -582,6 +582,8 @@ if 'num_coeffs_dct' not in st.session_state:
     st.session_state.num_coeffs_dct = 24
 if 'dct_fixed_ratio' not in st.session_state:
     st.session_state.dct_fixed_ratio = False
+if 'wavelet_n' not in st.session_state:
+    st.session_state.wavelet_n = 8
 
 # Функции для обновления значений
 def update_fft_slider():
@@ -614,6 +616,16 @@ def update_fixed_ratio():
         # Принудительно обновляем элементы управления DCT
         st.session_state.dct_slider = st.session_state.num_coeffs_dct
         st.session_state.dct_input = st.session_state.num_coeffs_dct
+
+def update_wavelet_slider():
+    st.session_state.wavelet_n = st.session_state.wavelet_slider
+    # Принудительно обновляем поле ввода
+    st.session_state.wavelet_input = st.session_state.wavelet_n
+
+def update_wavelet_input():
+    st.session_state.wavelet_n = st.session_state.wavelet_input
+    # Принудительно обновляем слайдер
+    st.session_state.wavelet_slider = st.session_state.wavelet_n
 
 # Галочка для фиксации соотношения
 dct_fixed_ratio = st.sidebar.checkbox(
@@ -695,7 +707,9 @@ wavelet_n = st.sidebar.slider(
     "Количество коэффициентов вейвлетов (WaveN)",
     min_value=1,
     max_value=max_wavelet_coeffs,
-    value=8,
+    value=st.session_state.wavelet_n,
+    key="wavelet_slider",
+    on_change=update_wavelet_slider,
     help="Количество наибольших коэффициентов вейвлетов для аппроксимации разности"
 )
 
@@ -704,7 +718,9 @@ wavelet_n_input = st.sidebar.number_input(
     "Введите количество коэффициентов вейвлетов",
     min_value=1,
     max_value=max_wavelet_coeffs,
-    value=50,
+    value=st.session_state.wavelet_n,
+    key="wavelet_input",
+    on_change=update_wavelet_input,
     help="Введите точное количество коэффициентов вейвлетов"
 )
 
@@ -713,8 +729,8 @@ f_approx_fft, err_fft, f_fft, energies, idx_top = fourier_reconstruction(f, num_
 f_approx_dct, err_dct, f_dct, idx_top_dct = dct_reconstruction(f, num_coeffs_dct_input)
 
 # Восстановление с вейвлетами
-f_approx_fft_wave, err_fft_wave, f_approx_fft_only, wavelet_diff_fft = fourier_wavelet_reconstruction(f, num_coeffs_fft_input, wavelet_type, wavelet_n)
-f_approx_dct_wave, err_dct_wave, f_approx_dct_only, wavelet_diff_dct = dct_wavelet_reconstruction(f, num_coeffs_dct_input, wavelet_type, wavelet_n)
+f_approx_fft_wave, err_fft_wave, f_approx_fft_only, wavelet_diff_fft = fourier_wavelet_reconstruction(f, num_coeffs_fft_input, wavelet_type, wavelet_n_input)
+f_approx_dct_wave, err_dct_wave, f_approx_dct_only, wavelet_diff_dct = dct_wavelet_reconstruction(f, num_coeffs_dct_input, wavelet_type, wavelet_n_input)
 
 # Обработка ошибок вейвлетов
 if np.isnan(err_fft_wave):
@@ -810,7 +826,7 @@ stats_data = {
     'Метод': ['Фурье', 'DCT', 'Фурье+Вейвлеты', 'DCT+Вейвлеты'],
     'Коэф. Фурье': [num_coeffs_fft_input, '-', num_coeffs_fft_input, '-'],
     'Коэф. DCT': ['-', num_coeffs_dct_input, '-', num_coeffs_dct_input],
-    'Коэф. Вейвлетов': ['-', '-', wavelet_n, wavelet_n],
+    'Коэф. Вейвлетов': ['-', '-', wavelet_n_input, wavelet_n_input],
     'Относительная ошибка': [err_fft, err_dct, err_fft_wave, err_dct_wave],
     'Средняя абсолютная ошибка': [
         np.mean(np.abs(f - f_approx_fft)),
@@ -858,8 +874,8 @@ with col3:
     - Эффективно для аппроксимации разности
     - Выбирает наибольшие коэффициенты
     - Тип вейвлета: **{wavelet_type}**
-    - Количество коэффициентов: **{wavelet_n}**
-    """.format(wavelet_type=wavelet_type, wavelet_n=wavelet_n))
+    - Количество коэффициентов: **{wavelet_n_input}**
+    """.format(wavelet_type=wavelet_type, wavelet_n_input=wavelet_n_input))
 
 # Интерактивный анализ
 st.header("🔍 Интерактивный анализ")
